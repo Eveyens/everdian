@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Bot, User, Clock, Newspaper, BarChart2, FileText, Map as MapIcon, Table as TableIcon, Image as ImageIcon } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Send, Bot, User, Clock, Newspaper, BarChart2, FileText, Map as MapIcon, Table as TableIcon, Image as ImageIcon, Download, LayoutDashboard } from 'lucide-react';
 import WorldMap from '../components/WorldMap';
 import {
     Chart as ChartJS,
@@ -30,9 +31,16 @@ ChartJS.register(
 
 // --- JSON STRUCTURE DOCUMENTATION ---
 /*
-The webhook should return JSON in the following formats:
+WEBHOOK REQUEST FORMAT:
+{
+  "message": "User's question or request",
+  "format": "text" | "table" | "map" | "graphic" | "rapport",
+  "conversationID": "unique-conversation-id"
+}
 
-1. GRAPHIC (Chart.js)
+WEBHOOK RESPONSE FORMATS (Standardized JSON):
+
+1. GRAPHIC (Chart.js) - format: "graphic"
 {
   "type": "graphic",
   "chartType": "bar" | "line" | "pie" | "doughnut",
@@ -51,7 +59,16 @@ The webhook should return JSON in the following formats:
   "options": { ... } // Optional Chart.js options
 }
 
-2. MAP (World Map)
+OR alternative format:
+{
+  "chartData": {
+    "type": "bar" | "line" | "pie" | "doughnut",
+    "labels": ["Jan", "Feb", "Mar"],
+    "datasets": [...]
+  }
+}
+
+2. MAP (World Map) - format: "map"
 {
   "type": "map",
   "markers": [
@@ -60,7 +77,16 @@ The webhook should return JSON in the following formats:
   ]
 }
 
-3. TABLE
+OR alternative format:
+{
+  "mapData": {
+    "markers": [
+      { "title": "New York", "coordinates": [-74.006, 40.7128], "value": 100 }
+    ]
+  }
+}
+
+3. TABLE - format: "table"
 {
   "type": "table",
   "columns": ["Name", "Role", "Status"],
@@ -70,12 +96,169 @@ The webhook should return JSON in the following formats:
   ]
 }
 
-4. REPORT / TEXT
+OR alternative format:
 {
-  "type": "rapport" | "text",
+  "tableData": {
+    "headers": ["Name", "Role", "Status"],
+    "rows": [
+      ["Alice", "Admin", "Active"],
+      ["Bob", "User", "Inactive"]
+    ]
+  }
+}
+
+4. TEXT / REPORT - format: "text" | "rapport"
+{
+  "type": "text" | "rapport",
   "content": "## Monthly Report\n\nThis is the detailed report content..."
 }
+
+OR alternative format:
+{
+  "content": "Simple text response..."
+}
 */
+
+// Enhanced Wrapper Component for visualizations
+const EnhancedWrapper = ({ children, onDownload, downloadFilename, downloadData, downloadType = 'json' }) => {
+    const [isHovered, setIsHovered] = useState(false);
+
+    const handleDownload = () => {
+        if (onDownload) {
+            onDownload();
+            return;
+        }
+
+        if (downloadType === 'png') {
+            // For charts, find the canvas element within this wrapper
+            setTimeout(() => {
+                const wrapper = document.activeElement?.closest('div[style*="background"]') || 
+                               document.querySelector('div[style*="linear-gradient(135deg"]');
+                const canvas = wrapper?.querySelector('canvas');
+                if (canvas) {
+                    canvas.toBlob((blob) => {
+                        if (blob) {
+                            const url = URL.createObjectURL(blob);
+                            const a = document.createElement('a');
+                            a.href = url;
+                            a.download = downloadFilename || `chart-${new Date().toISOString().split('T')[0]}.png`;
+                            document.body.appendChild(a);
+                            a.click();
+                            document.body.removeChild(a);
+                            URL.revokeObjectURL(url);
+                        }
+                    });
+                } else {
+                    // Fallback to JSON if canvas not found
+                    const blob = new Blob([JSON.stringify(downloadData, null, 2)], { type: 'application/json' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = downloadFilename || `chart-${new Date().toISOString().split('T')[0]}.json`;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                }
+            }, 100);
+            return;
+        }
+
+        let blob, filename;
+        
+        if (downloadType === 'json') {
+            blob = new Blob([JSON.stringify(downloadData, null, 2)], { type: 'application/json' });
+            filename = downloadFilename || `data-${new Date().toISOString().split('T')[0]}.json`;
+        } else if (downloadType === 'csv') {
+            // Convert table data to CSV
+            const csv = convertToCSV(downloadData);
+            blob = new Blob([csv], { type: 'text/csv' });
+            filename = downloadFilename || `table-${new Date().toISOString().split('T')[0]}.csv`;
+        }
+
+        if (blob) {
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+    };
+
+    const convertToCSV = (data) => {
+        if (!data || !data.headers || !data.rows) return '';
+        const headers = data.headers.join(',');
+        const rows = data.rows.map(row => row.map(cell => `"${cell}"`).join(',')).join('\n');
+        return `${headers}\n${rows}`;
+    };
+
+    return (
+        <div
+            onMouseEnter={() => setIsHovered(true)}
+            onMouseLeave={() => setIsHovered(false)}
+            style={{
+                background: 'linear-gradient(135deg, rgba(30, 41, 59, 0.6) 0%, rgba(15, 23, 42, 0.8) 100%)',
+                borderRadius: '12px',
+                border: '1px solid #334155',
+                padding: '20px',
+                position: 'relative',
+                transition: 'all 0.3s ease',
+                boxShadow: isHovered 
+                    ? '0 10px 30px rgba(59, 130, 246, 0.2)' 
+                    : '0 4px 12px rgba(0, 0, 0, 0.3)',
+                transform: isHovered ? 'translateY(-2px)' : 'translateY(0)',
+                borderColor: isHovered ? '#3b82f6' : '#334155'
+            }}
+        >
+            {/* Download Button */}
+            <button
+                onClick={handleDownload}
+                style={{
+                    position: 'absolute',
+                    top: '16px',
+                    right: '16px',
+                    background: isHovered ? '#3b82f6' : 'rgba(59, 130, 246, 0.1)',
+                    border: '1px solid #3b82f6',
+                    borderRadius: '8px',
+                    padding: '8px 12px',
+                    color: '#f8fafc',
+                    fontSize: '0.85rem',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    transition: 'all 0.2s',
+                    fontWeight: '500',
+                    zIndex: 10
+                }}
+            >
+                <Download size={14} />
+                Télécharger
+            </button>
+
+            {/* Content */}
+            <div style={{
+                paddingRight: '100px', // Space for download button
+            }}>
+                {children}
+            </div>
+
+            {/* Decorative border */}
+            <div style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                width: '4px',
+                height: '100%',
+                background: 'linear-gradient(180deg, #3b82f6 0%, #2563eb 100%)',
+                borderRadius: '12px 0 0 12px'
+            }} />
+        </div>
+    );
+};
 
 // Chart Renderer Component
 const ChartRenderer = ({ chartData }) => {
@@ -102,107 +285,401 @@ const ChartRenderer = ({ chartData }) => {
         ...customOptions
     };
 
-    const style = { height: '300px', width: '100%', padding: '10px', background: 'rgba(15, 23, 42, 0.5)', borderRadius: '8px' };
+    const style = { height: '300px', width: '100%' };
 
-    switch (type?.toLowerCase()) {
-        case 'line': return <div style={style}><Line data={data} options={options} /></div>;
-        case 'pie': return <div style={style}><Pie data={data} options={options} /></div>;
-        case 'doughnut': return <div style={style}><Doughnut data={data} options={options} /></div>;
-        case 'bar':
-        default: return <div style={style}><Bar data={data} options={options} /></div>;
-    }
+    const chartComponent = (() => {
+        switch (type?.toLowerCase()) {
+            case 'line': return <Line data={data} options={options} />;
+            case 'pie': return <Pie data={data} options={options} />;
+            case 'doughnut': return <Doughnut data={data} options={options} />;
+            case 'bar':
+            default: return <Bar data={data} options={options} />;
+        }
+    })();
+
+    const handleChartDownload = () => {
+        // Try to download as PNG first
+        setTimeout(() => {
+            const canvas = document.querySelector('canvas');
+            if (canvas) {
+                canvas.toBlob((blob) => {
+                    if (blob) {
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = `chart-${type || 'bar'}-${new Date().toISOString().split('T')[0]}.png`;
+                        document.body.appendChild(a);
+                        a.click();
+                        document.body.removeChild(a);
+                        URL.revokeObjectURL(url);
+                    }
+                });
+            } else {
+                // Fallback to JSON
+                const blob = new Blob([JSON.stringify(chartData, null, 2)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `chart-${type || 'bar'}-${new Date().toISOString().split('T')[0]}.json`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            }
+        }, 200);
+    };
+
+    return (
+        <EnhancedWrapper
+            onDownload={handleChartDownload}
+        >
+            <div style={style}>{chartComponent}</div>
+        </EnhancedWrapper>
+    );
 };
 
 // Simple Table Component
 const SimpleTable = ({ headers, rows }) => {
-    if ((!headers || headers.length === 0) && (!rows || rows.length === 0)) return <p style={{ color: '#94a3b8' }}>No data available</p>;
+    if ((!headers || headers.length === 0) && (!rows || rows.length === 0)) {
+        return (
+            <EnhancedWrapper>
+                <p style={{ color: '#94a3b8' }}>No data available</p>
+            </EnhancedWrapper>
+        );
+    }
+
+    const tableData = { headers, rows };
 
     return (
-        <div style={{ overflowX: 'auto', background: 'rgba(15, 23, 42, 0.5)', borderRadius: '8px', padding: '10px' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem' }}>
-                <thead>
-                    <tr>
-                        {headers.map((col, i) => (
-                            <th key={i} style={{ textAlign: 'left', padding: '12px', borderBottom: '1px solid #334155', color: '#94a3b8' }}>{col}</th>
-                        ))}
-                    </tr>
-                </thead>
-                <tbody>
-                    {rows.map((row, i) => (
-                        <tr key={i}>
-                            {row.map((cell, j) => (
-                                <td key={j} style={{ padding: '12px', borderBottom: '1px solid #1e293b', color: '#e2e8f0' }}>{cell}</td>
+        <EnhancedWrapper
+            downloadData={tableData}
+            downloadFilename={`table-${new Date().toISOString().split('T')[0]}.csv`}
+            downloadType="csv"
+        >
+            <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem' }}>
+                    <thead>
+                        <tr>
+                            {headers.map((col, i) => (
+                                <th key={i} style={{ textAlign: 'left', padding: '12px', borderBottom: '1px solid #334155', color: '#94a3b8' }}>{col}</th>
                             ))}
                         </tr>
-                    ))}
-                </tbody>
-            </table>
+                    </thead>
+                    <tbody>
+                        {rows.map((row, i) => (
+                            <tr key={i}>
+                                {row.map((cell, j) => (
+                                    <td key={j} style={{ padding: '12px', borderBottom: '1px solid #1e293b', color: '#e2e8f0' }}>{cell}</td>
+                                ))}
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
+        </EnhancedWrapper>
+    );
+};
+
+// Report Renderer Component - Beautiful report with download option
+const ReportRenderer = ({ content }) => {
+    const [isHovered, setIsHovered] = useState(false);
+
+    // Parse markdown-like content for titles
+    const parseContent = (text) => {
+        const lines = text.split('\n');
+        return lines.map((line, index) => {
+            // H1 titles
+            if (line.startsWith('# ')) {
+                return (
+                    <h1 key={index} style={{
+                        fontSize: '1.5rem',
+                        fontWeight: 'bold',
+                        color: '#f8fafc',
+                        marginTop: index > 0 ? '24px' : '0',
+                        marginBottom: '12px',
+                        paddingBottom: '8px',
+                        borderBottom: '2px solid #3b82f6'
+                    }}>
+                        {line.substring(2)}
+                    </h1>
+                );
+            }
+            // H2 titles
+            if (line.startsWith('## ')) {
+                return (
+                    <h2 key={index} style={{
+                        fontSize: '1.25rem',
+                        fontWeight: '600',
+                        color: '#e2e8f0',
+                        marginTop: index > 0 ? '20px' : '0',
+                        marginBottom: '10px',
+                        paddingBottom: '6px',
+                        borderBottom: '1px solid #475569'
+                    }}>
+                        {line.substring(3)}
+                    </h2>
+                );
+            }
+            // H3 titles
+            if (line.startsWith('### ')) {
+                return (
+                    <h3 key={index} style={{
+                        fontSize: '1.1rem',
+                        fontWeight: '600',
+                        color: '#cbd5e1',
+                        marginTop: index > 0 ? '16px' : '0',
+                        marginBottom: '8px'
+                    }}>
+                        {line.substring(4)}
+                    </h3>
+                );
+            }
+            // Bold text
+            if (line.startsWith('**') && line.endsWith('**')) {
+                return (
+                    <p key={index} style={{ fontWeight: 'bold', color: '#e2e8f0', margin: '8px 0' }}>
+                        {line.substring(2, line.length - 2)}
+                    </p>
+                );
+            }
+            // Regular paragraphs
+            if (line.trim()) {
+                return (
+                    <p key={index} style={{ 
+                        color: '#cbd5e1', 
+                        lineHeight: '1.6', 
+                        margin: '8px 0',
+                        paddingLeft: line.startsWith('- ') ? '16px' : '0'
+                    }}>
+                        {line.startsWith('- ') ? '• ' + line.substring(2) : line}
+                    </p>
+                );
+            }
+            // Empty lines
+            return <br key={index} />;
+        });
+    };
+
+    const handleDownload = () => {
+        const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `rapport-${new Date().toISOString().split('T')[0]}.txt`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    };
+
+    return (
+        <div
+            onMouseEnter={() => setIsHovered(true)}
+            onMouseLeave={() => setIsHovered(false)}
+            style={{
+                background: 'linear-gradient(135deg, rgba(30, 41, 59, 0.6) 0%, rgba(15, 23, 42, 0.8) 100%)',
+                borderRadius: '12px',
+                border: '1px solid #334155',
+                padding: '24px',
+                position: 'relative',
+                transition: 'all 0.3s ease',
+                boxShadow: isHovered 
+                    ? '0 10px 30px rgba(59, 130, 246, 0.2)' 
+                    : '0 4px 12px rgba(0, 0, 0, 0.3)',
+                transform: isHovered ? 'translateY(-2px)' : 'translateY(0)',
+                borderColor: isHovered ? '#3b82f6' : '#334155'
+            }}
+        >
+            {/* Download Button */}
+            <button
+                onClick={handleDownload}
+                style={{
+                    position: 'absolute',
+                    top: '16px',
+                    right: '16px',
+                    background: isHovered ? '#3b82f6' : 'rgba(59, 130, 246, 0.1)',
+                    border: '1px solid #3b82f6',
+                    borderRadius: '8px',
+                    padding: '8px 12px',
+                    color: '#f8fafc',
+                    fontSize: '0.85rem',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    transition: 'all 0.2s',
+                    fontWeight: '500'
+                }}
+            >
+                <FileText size={14} />
+                Télécharger
+            </button>
+
+            {/* Report Content */}
+            <div style={{
+                paddingRight: '100px', // Space for download button
+                lineHeight: '1.8'
+            }}>
+                {parseContent(content)}
+            </div>
+
+            {/* Decorative elements */}
+            <div style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                width: '4px',
+                height: '100%',
+                background: 'linear-gradient(180deg, #3b82f6 0%, #2563eb 100%)',
+                borderRadius: '12px 0 0 12px'
+            }} />
         </div>
     );
 };
 
-// Response Renderer Component
+// Response Renderer Component - Automatically detects and transforms JSON responses
 const ResponseRenderer = ({ data }) => {
     if (!data) return null;
 
-    // 1. Graphic / Chart
-    if (data.chartData) {
-        return <ChartRenderer chartData={data.chartData} />;
-    }
-
-    // 2. Map
-    if (data.mapData) {
-        // Map markers to WorldMap component format
-        // WorldMap expects: { name, coordinates: [lon, lat], value }
-        const markers = (data.mapData.markers || []).map(m => ({
-            name: m.title || "Marker",
-            coordinates: m.coordinates,
-            value: 50 // Default value for visibility
-        }));
-
-        return (
-            <div style={{ height: '350px', width: '100%', background: '#020617', borderRadius: '8px', overflow: 'hidden', position: 'relative', border: '1px solid #334155' }}>
-                <WorldMap markers={markers} />
-            </div>
-        );
-    }
-
-    // 3. Table
-    if (data.tableData) {
-        return <SimpleTable headers={data.tableData.headers} rows={data.tableData.rows} />;
-    }
-
-    // 4. Report / Text (Classique)
-    if (data.content) {
+    // Handle string responses
+    if (typeof data === 'string') {
         return (
             <div style={{
                 whiteSpace: 'pre-wrap',
-                background: data.content.length > 100 ? 'rgba(30, 41, 59, 0.3)' : 'transparent',
-                padding: data.content.length > 100 ? '20px' : '0',
+                background: data.length > 100 ? 'rgba(30, 41, 59, 0.3)' : 'transparent',
+                padding: data.length > 100 ? '20px' : '0',
                 borderRadius: '8px',
-                border: data.content.length > 100 ? '1px solid #334155' : 'none'
+                border: data.length > 100 ? '1px solid #334155' : 'none'
             }}>
-                {data.content}
+                {data}
             </div>
         );
     }
 
-    // Fallback for unknown JSON or simple string
-    if (typeof data === 'string') return <p style={{ whiteSpace: 'pre-wrap' }}>{data}</p>;
+    // Detect format based on "type" field (standardized format)
+    const responseType = data.type?.toLowerCase();
 
+    // 1. GRAPHIC / CHART - Standardized format or alternative
+    if (responseType === 'graphic' || data.chartData || (data.data && data.chartType)) {
+        let chartData = null;
+        
+        // Standardized format: { type: "graphic", chartType: "bar", data: {...} }
+        if (responseType === 'graphic' && data.data) {
+            chartData = {
+                type: data.chartType || 'bar',
+                labels: data.data.labels || [],
+                datasets: data.data.datasets || []
+            };
+        }
+        // Alternative format: { chartData: { type, labels, datasets } }
+        else if (data.chartData) {
+            chartData = data.chartData;
+        }
+
+        if (chartData) {
+            return <ChartRenderer chartData={chartData} />;
+        }
+    }
+
+    // 2. MAP - Standardized format or alternative
+    if (responseType === 'map' || data.mapData) {
+        let markers = [];
+        
+        // Standardized format: { type: "map", markers: [...] }
+        if (responseType === 'map' && data.markers) {
+            markers = data.markers.map(m => ({
+                name: m.name || m.title || "Marker",
+                coordinates: m.coordinates,
+                value: m.value !== undefined ? m.value : 50 // Preserve string values
+            }));
+        }
+        // Alternative format: { mapData: { markers: [...] } }
+        else if (data.mapData && data.mapData.markers) {
+            markers = data.mapData.markers.map(m => ({
+                name: m.name || m.title || "Marker",
+                coordinates: m.coordinates,
+                value: m.value !== undefined ? m.value : 50 // Preserve string values
+            }));
+        }
+
+        if (markers.length > 0) {
+            return (
+                <EnhancedWrapper
+                    downloadData={{ type: 'map', markers }}
+                    downloadFilename={`map-${new Date().toISOString().split('T')[0]}.json`}
+                    downloadType="json"
+                >
+                    <div style={{ height: '350px', width: '100%', background: '#020617', borderRadius: '8px', overflow: 'hidden', position: 'relative' }}>
+                        <WorldMap markers={markers} />
+                    </div>
+                </EnhancedWrapper>
+            );
+        }
+    }
+
+    // 3. TABLE - Standardized format or alternative
+    if (responseType === 'table' || data.tableData) {
+        let headers = [];
+        let rows = [];
+        
+        // Standardized format: { type: "table", columns: [...], rows: [...] }
+        if (responseType === 'table') {
+            headers = data.columns || [];
+            rows = data.rows || [];
+        }
+        // Alternative format: { tableData: { headers: [...], rows: [...] } }
+        else if (data.tableData) {
+            headers = data.tableData.headers || data.tableData.columns || [];
+            rows = data.tableData.rows || [];
+        }
+
+        if (headers.length > 0 || rows.length > 0) {
+            return <SimpleTable headers={headers} rows={rows} />;
+        }
+    }
+
+    // 4. TEXT - Simple text format
+    if (responseType === 'text' || (!responseType && data.content && !data.type)) {
+        const content = data.content || '';
+        if (content) {
+            return (
+                <div style={{
+                    whiteSpace: 'pre-wrap',
+                    background: content.length > 100 ? 'rgba(30, 41, 59, 0.3)' : 'transparent',
+                    padding: content.length > 100 ? '20px' : '0',
+                    borderRadius: '8px',
+                    border: content.length > 100 ? '1px solid #334155' : 'none'
+                }}>
+                    {content}
+                </div>
+            );
+        }
+    }
+
+    // 5. RAPPORT - Enhanced report format with styling and download
+    if (responseType === 'rapport') {
+        const content = data.content || '';
+        if (content) {
+            return <ReportRenderer content={content} />;
+        }
+    }
+
+    // Fallback: Display raw JSON for debugging
     return (
-        <div style={{ whiteSpace: 'pre-wrap', color: '#94a3b8', fontSize: '0.8rem' }}>
+        <div style={{ whiteSpace: 'pre-wrap', color: '#94a3b8', fontSize: '0.8rem', background: 'rgba(30, 41, 59, 0.3)', padding: '12px', borderRadius: '8px', border: '1px solid #334155' }}>
+            <div style={{ color: '#f59e0b', marginBottom: '8px', fontSize: '0.75rem' }}>⚠️ Unknown response format. Raw data:</div>
             {JSON.stringify(data, null, 2)}
         </div>
     );
 };
 
 function NonTechnical() {
+    const navigate = useNavigate();
     const [messages, setMessages] = useState([
-        { id: 1, type: 'bot', text: 'Hello! Please select a format for your inquiry.' }
+        { id: 1, type: 'bot', text: 'Hello! Select a format and ask your question.' }
     ]);
     const [input, setInput] = useState('');
-    const [selectedFormat, setSelectedFormat] = useState(null);
+    const [selectedFormat, setSelectedFormat] = useState('text'); // Default to 'text' instead of null
     const [conversationId, setConversationId] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const messagesEndRef = useRef(null);
@@ -225,33 +702,73 @@ function NonTechnical() {
         e.preventDefault();
         if (!input.trim()) return;
 
-        const userMsg = { id: Date.now(), type: 'user', text: input };
+        const userMsg = { id: Date.now(), type: 'user', text: input, format: selectedFormat };
         setMessages(prev => [...prev, userMsg]);
+        const currentInput = input;
+        const currentFormat = selectedFormat || "text";
         setInput('');
         setIsLoading(true);
+
+        // Prepare request payload
+        const requestPayload = {
+            message: currentInput,
+            format: currentFormat,
+            conversationID: conversationId
+        };
+
+        console.log('📤 Sending request to webhook:', {
+            url: 'https://n8n.srv849307.hstgr.cloud/webhook/everdian-agent',
+            payload: requestPayload
+        });
 
         try {
             const response = await fetch('https://n8n.srv849307.hstgr.cloud/webhook/everdian-agent', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    message: input,
-                    format: selectedFormat || "text",
-                    conversationID: conversationId
-                }),
+                body: JSON.stringify(requestPayload),
             });
 
-            if (!response.ok) throw new Error('Network response was not ok');
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                if (response.status === 404) {
+                    throw new Error('Webhook not found. Please check if the n8n workflow is active.');
+                }
+                throw new Error(errorData.message || `HTTP ${response.status}: ${response.statusText}`);
+            }
 
             const data = await response.json();
+            
+            console.log('📥 Received response from webhook:', {
+                format: currentFormat,
+                responseType: data.type,
+                hasChartData: !!data.chartData || (data.type === 'graphic'),
+                hasMapData: !!data.mapData || (data.type === 'map'),
+                hasTableData: !!data.tableData || (data.type === 'table'),
+                hasContent: !!data.content,
+                rawData: data
+            });
 
-            // Pass the raw data to the renderer, which now handles specific keys (chartData, mapData, etc.)
-            const botResponse = { id: Date.now() + 1, type: 'bot', data: data };
+            // Validate response structure
+            if (!data || (typeof data !== 'object' && typeof data !== 'string')) {
+                throw new Error('Invalid response format from webhook');
+            }
+
+            // Automatically transform the response based on its structure
+            // The ResponseRenderer will detect the format and render accordingly
+            const botResponse = { 
+                id: Date.now() + 1, 
+                type: 'bot', 
+                data: data,
+                format: currentFormat // Store the requested format for reference
+            };
             setMessages(prev => [...prev, botResponse]);
 
         } catch (error) {
-            console.error('Error sending message:', error);
-            const errorResponse = { id: Date.now() + 1, type: 'bot', text: 'Error connecting to agent.' };
+            console.error('❌ Error sending message:', error);
+            const errorMessage = error.message.includes('Webhook not found') 
+                ? '⚠️ Webhook not found. Please ensure the n8n workflow "everdian-agent" is active. Check your n8n dashboard.'
+                : `Error connecting to agent: ${error.message}`;
+            const errorResponse = { id: Date.now() + 1, type: 'bot', text: errorMessage };
             setMessages(prev => [...prev, errorResponse]);
         } finally {
             setIsLoading(false);
@@ -260,65 +777,118 @@ function NonTechnical() {
 
     const options = ['text', 'table', 'map', 'graphic', 'rapport'];
 
-    const handleOptionClick = (option) => {
-        setSelectedFormat(option);
-        const userMsg = { id: Date.now(), type: 'user', text: `Format: ${option}` };
-        setMessages(prev => [...prev, userMsg]);
-
-        // Mock response for immediate feedback if webhook is slow/not connected in dev
-        // In prod, this timeout might be removed or adjusted
-        /* 
-        setTimeout(() => {
-             // This is just a placeholder interaction, the real data comes from handleSend
-        }, 500); 
-        */
-    };
-
     return (
         <div style={{
             display: 'flex',
-            flexDirection: 'row',
+            flexDirection: 'column',
             height: '100vh',
             width: '100vw',
             background: '#0f172a',
             color: '#f8fafc',
             overflow: 'hidden'
         }}>
-            {/* Left Section - Chat Interface */}
-            <div style={{
-                flex: 1, // Takes remaining space
+            {/* Top Navigation Header */}
+            <header style={{
+                height: '60px',
+                borderBottom: '1px solid #334155',
                 display: 'flex',
-                flexDirection: 'column',
-                borderRight: '1px solid #334155',
+                alignItems: 'center',
+                padding: '0 24px',
+                justifyContent: 'space-between',
                 background: 'rgba(15, 23, 42, 0.95)',
-                zIndex: 20,
-                overflow: 'hidden'
+                backdropFilter: 'blur(8px)',
+                zIndex: 50,
+                flexShrink: 0
             }}>
-                {/* Chat Header */}
-                <div style={{
-                    padding: '16px 24px',
-                    borderBottom: '1px solid #334155',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '12px',
-                    flexShrink: 0
-                }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                     <div style={{
-                        width: '40px',
-                        height: '40px',
+                        width: '32px',
+                        height: '32px',
                         background: 'rgba(59, 130, 246, 0.1)',
                         borderRadius: '8px',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center'
                     }}>
-                        <Bot size={24} color="#3b82f6" />
+                        <Bot size={18} color="#3b82f6" />
                     </div>
-                    <div>
-                        <h2 style={{ fontSize: '1rem', fontWeight: 'bold', margin: 0 }}>AI Assistant</h2>
-                        <span style={{ fontSize: '0.75rem', color: '#10b981' }}>● Online</span>
-                    </div>
+                    <h1 style={{ fontSize: '1.25rem', fontWeight: 'bold', letterSpacing: '-0.025em', margin: 0 }}>
+                        Non-Technical<span style={{ color: '#3b82f6' }}> Platform</span>
+                    </h1>
                 </div>
+
+                <button
+                    onClick={() => navigate('/power')}
+                    style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        padding: '8px 16px',
+                        background: 'rgba(59, 130, 246, 0.1)',
+                        border: '1px solid #3b82f6',
+                        borderRadius: '8px',
+                        color: '#f8fafc',
+                        fontSize: '0.875rem',
+                        fontWeight: '500',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s'
+                    }}
+                    onMouseEnter={(e) => {
+                        e.currentTarget.style.background = '#3b82f6';
+                        e.currentTarget.style.transform = 'translateY(-1px)';
+                    }}
+                    onMouseLeave={(e) => {
+                        e.currentTarget.style.background = 'rgba(59, 130, 246, 0.1)';
+                        e.currentTarget.style.transform = 'translateY(0)';
+                    }}
+                >
+                    <LayoutDashboard size={16} />
+                    Power Platform
+                </button>
+            </header>
+
+            {/* Main Content */}
+            <div style={{
+                display: 'flex',
+                flexDirection: 'row',
+                flex: 1,
+                overflow: 'hidden'
+            }}>
+                {/* Left Section - Chat Interface */}
+                <div style={{
+                    flex: 1, // Takes remaining space
+                    display: 'flex',
+                    flexDirection: 'column',
+                    borderRight: '1px solid #334155',
+                    background: 'rgba(15, 23, 42, 0.95)',
+                    zIndex: 20,
+                    overflow: 'hidden'
+                }}>
+                    {/* Chat Header */}
+                    <div style={{
+                        padding: '16px 24px',
+                        borderBottom: '1px solid #334155',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '12px',
+                        flexShrink: 0
+                    }}>
+                        <div style={{
+                            width: '40px',
+                            height: '40px',
+                            background: 'rgba(59, 130, 246, 0.1)',
+                            borderRadius: '8px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center'
+                        }}>
+                            <Bot size={24} color="#3b82f6" />
+                        </div>
+                        <div>
+                            <h2 style={{ fontSize: '1rem', fontWeight: 'bold', margin: 0 }}>AI Assistant</h2>
+                            <span style={{ fontSize: '0.75rem', color: '#10b981' }}>● Online</span>
+                        </div>
+                    </div>
 
                 {/* Messages Area */}
                 <div style={{
@@ -363,7 +933,24 @@ function NonTechnical() {
                                 width: msg.type === 'bot' ? '100%' : 'auto',
                                 maxWidth: msg.type === 'bot' ? '600px' : '100%'
                             }}>
-                                {msg.text && <p style={{ margin: 0 }}>{msg.text}</p>}
+                                {msg.text && (
+                                    <div>
+                                        <p style={{ margin: 0 }}>{msg.text}</p>
+                                        {msg.format && msg.type === 'user' && (
+                                            <span style={{
+                                                fontSize: '0.7rem',
+                                                color: '#3b82f6',
+                                                marginTop: '4px',
+                                                display: 'inline-block',
+                                                padding: '2px 8px',
+                                                background: 'rgba(59, 130, 246, 0.1)',
+                                                borderRadius: '4px'
+                                            }}>
+                                                Format: {msg.format}
+                                            </span>
+                                        )}
+                                    </div>
+                                )}
                                 {msg.data && <ResponseRenderer data={msg.data} />}
                             </div>
                         </div>
@@ -379,45 +966,6 @@ function NonTechnical() {
                             </div>
                         </div>
                     )}
-
-                    {messages.length === 1 && (
-                        <div style={{
-                            display: 'flex',
-                            flexWrap: 'wrap',
-                            gap: '12px',
-                            marginTop: '10px',
-                            width: '100%',
-                            paddingLeft: '44px'
-                        }}>
-                            {options.map((opt, index) => (
-                                <button
-                                    key={index}
-                                    onClick={() => handleOptionClick(opt)}
-                                    style={{
-                                        padding: '8px 16px',
-                                        background: selectedFormat === opt ? 'rgba(59, 130, 246, 0.2)' : 'rgba(30, 41, 59, 0.3)',
-                                        border: selectedFormat === opt ? '1px solid #3b82f6' : '1px solid #334155',
-                                        borderRadius: '20px',
-                                        color: selectedFormat === opt ? '#f8fafc' : '#94a3b8',
-                                        cursor: 'pointer',
-                                        transition: 'all 0.2s',
-                                        fontSize: '0.85rem',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '6px',
-                                        textTransform: 'capitalize'
-                                    }}
-                                >
-                                    {opt === 'text' && <FileText size={16} />}
-                                    {opt === 'table' && <TableIcon size={16} />}
-                                    {opt === 'map' && <MapIcon size={16} />}
-                                    {opt === 'graphic' && <BarChart2 size={16} />}
-                                    {opt === 'rapport' && <ImageIcon size={16} />}
-                                    {opt}
-                                </button>
-                            ))}
-                        </div>
-                    )}
                     <div ref={messagesEndRef} />
                 </div>
 
@@ -428,13 +976,49 @@ function NonTechnical() {
                     background: 'rgba(15, 23, 42, 0.95)',
                     flexShrink: 0
                 }}>
+                    {/* Format Selection Buttons */}
+                    <div style={{
+                        display: 'flex',
+                        flexWrap: 'wrap',
+                        gap: '8px',
+                        marginBottom: '12px'
+                    }}>
+                        {options.map((opt, index) => (
+                            <button
+                                key={index}
+                                type="button"
+                                onClick={() => setSelectedFormat(opt)}
+                                style={{
+                                    padding: '6px 12px',
+                                    background: selectedFormat === opt ? 'rgba(59, 130, 246, 0.2)' : 'rgba(30, 41, 59, 0.3)',
+                                    border: selectedFormat === opt ? '1px solid #3b82f6' : '1px solid #334155',
+                                    borderRadius: '16px',
+                                    color: selectedFormat === opt ? '#f8fafc' : '#94a3b8',
+                                    cursor: 'pointer',
+                                    transition: 'all 0.2s',
+                                    fontSize: '0.8rem',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '4px',
+                                    textTransform: 'capitalize',
+                                    fontWeight: selectedFormat === opt ? '600' : '400'
+                                }}
+                            >
+                                {opt === 'text' && <FileText size={14} />}
+                                {opt === 'table' && <TableIcon size={14} />}
+                                {opt === 'map' && <MapIcon size={14} />}
+                                {opt === 'graphic' && <BarChart2 size={14} />}
+                                {opt === 'rapport' && <ImageIcon size={14} />}
+                                {opt}
+                            </button>
+                        ))}
+                    </div>
                     <form onSubmit={handleSend} style={{ position: 'relative', width: '100%' }}>
                         <input
                             type="text"
                             value={input}
                             onChange={(e) => setInput(e.target.value)}
-                            placeholder={selectedFormat ? `Ask for ${selectedFormat}...` : "Select a format above first..."}
-                            disabled={!selectedFormat}
+                            placeholder={`Ask your question (format: ${selectedFormat})...`}
                             style={{
                                 width: '100%',
                                 padding: '14px 48px 14px 16px',
@@ -444,19 +1028,20 @@ function NonTechnical() {
                                 color: 'white',
                                 fontSize: '0.95rem',
                                 outline: 'none',
-                                opacity: selectedFormat ? 1 : 0.7,
-                                cursor: selectedFormat ? 'text' : 'not-allowed'
+                                transition: 'border-color 0.2s'
                             }}
+                            onFocus={(e) => e.target.style.borderColor = '#3b82f6'}
+                            onBlur={(e) => e.target.style.borderColor = '#334155'}
                         />
                         <button
                             type="submit"
-                            disabled={!input.trim() || !selectedFormat}
+                            disabled={!input.trim()}
                             style={{
                                 position: 'absolute',
                                 right: '8px',
                                 top: '50%',
                                 transform: 'translateY(-50%)',
-                                background: input.trim() && selectedFormat ? '#3b82f6' : 'transparent',
+                                background: input.trim() ? '#3b82f6' : 'transparent',
                                 border: 'none',
                                 borderRadius: '8px',
                                 width: '32px',
@@ -464,11 +1049,11 @@ function NonTechnical() {
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'center',
-                                cursor: input.trim() && selectedFormat ? 'pointer' : 'default',
+                                cursor: input.trim() ? 'pointer' : 'default',
                                 transition: 'background 0.2s'
                             }}
                         >
-                            <Send size={16} color={input.trim() && selectedFormat ? 'white' : '#475569'} />
+                            <Send size={16} color={input.trim() ? 'white' : '#475569'} />
                         </button>
                     </form>
                 </div>
@@ -510,6 +1095,7 @@ function NonTechnical() {
                         </div>
                     ))}
                 </div>
+            </div>
             </div>
         </div>
     );

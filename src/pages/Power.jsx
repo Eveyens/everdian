@@ -1,10 +1,12 @@
 import React, { useState, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import NewsFeed from '../components/NewsFeed';
 import DataSelector from '../components/DataSelector';
 import WorldMap from '../components/WorldMap';
-import { Layout, Menu, Bell, User } from 'lucide-react';
+import { Layout, Menu, Bell, User, Bot } from 'lucide-react';
 
 function Power() {
+    const navigate = useNavigate();
     const [activeTab, setActiveTab] = useState('overview');
     const [range, setRange] = useState(50);
     const [selectedDataset, setSelectedDataset] = useState('Global Sales Q3 2024');
@@ -84,6 +86,35 @@ function Power() {
                         <span style={{ cursor: 'pointer', transition: 'color 0.2s' }} className="hover:text-white">Analytics</span>
                         <span style={{ cursor: 'pointer', transition: 'color 0.2s' }} className="hover:text-white">Reports</span>
                     </nav>
+                    <div style={{ width: '1px', height: '24px', background: '#334155' }}></div>
+                    <button
+                        onClick={() => navigate('/non-technical')}
+                        style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                            padding: '8px 16px',
+                            background: 'rgba(59, 130, 246, 0.1)',
+                            border: '1px solid #3b82f6',
+                            borderRadius: '8px',
+                            color: '#f8fafc',
+                            fontSize: '0.875rem',
+                            fontWeight: '500',
+                            cursor: 'pointer',
+                            transition: 'all 0.2s'
+                        }}
+                        onMouseEnter={(e) => {
+                            e.currentTarget.style.background = '#3b82f6';
+                            e.currentTarget.style.transform = 'translateY(-1px)';
+                        }}
+                        onMouseLeave={(e) => {
+                            e.currentTarget.style.background = 'rgba(59, 130, 246, 0.1)';
+                            e.currentTarget.style.transform = 'translateY(0)';
+                        }}
+                    >
+                        <Bot size={16} />
+                        Non-Technical
+                    </button>
                     <div style={{ width: '1px', height: '24px', background: '#334155' }}></div>
                     <div style={{ display: 'flex', gap: '16px' }}>
                         <Bell size={20} color="#94a3b8" style={{ cursor: 'pointer' }} />
