@@ -163,10 +163,10 @@ const WorldMap = ({ markers = [], density = 50 }) => {
               })
             }
           </Geographies>
-          {markers.map(({ name, coordinates, markerOffset, value }) => (
+          {markers.map(({ name, coordinates, markerOffset, value, description }) => (
             <Marker key={name} coordinates={coordinates}>
               <g
-                onClick={(e) => handleMarkerClick(e, { name, coordinates, value })}
+                onClick={(e) => handleMarkerClick(e, { name, coordinates, value, description })}
                 style={{ cursor: "pointer" }}
               >
                 <motion.circle
@@ -310,7 +310,7 @@ const WorldMap = ({ markers = [], density = 50 }) => {
             <div style={{ 
               fontSize: '0.85rem', 
               color: '#94a3b8',
-              marginBottom: '6px'
+              marginBottom: selectedMarker.description ? '4px' : '6px'
             }}>
               <span style={{ color: '#64748b' }}>Status:</span>{' '}
               <span style={{ 
@@ -320,6 +320,16 @@ const WorldMap = ({ markers = [], density = 50 }) => {
                 {typeof selectedMarker.value === 'string' ? selectedMarker.value : `Value: ${selectedMarker.value}`}
               </span>
             </div>
+            {selectedMarker.description && (
+              <div style={{
+                fontSize: '0.8rem',
+                color: '#e2e8f0',
+                marginBottom: '6px',
+                lineHeight: '1.5'
+              }}>
+                {selectedMarker.description}
+              </div>
+            )}
             <div style={{ 
               fontSize: '0.75rem', 
               color: '#64748b', 

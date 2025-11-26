@@ -350,6 +350,9 @@ const SimpleTable = ({ headers, rows }) => {
 
     const tableData = { headers, rows };
 
+    const isUrl = (value) =>
+        typeof value === 'string' && /^https?:\/\/[^\s]+$/i.test(value.trim());
+
     return (
         <EnhancedWrapper
             downloadData={tableData}
@@ -368,9 +371,47 @@ const SimpleTable = ({ headers, rows }) => {
                     <tbody>
                         {rows.map((row, i) => (
                             <tr key={i}>
-                                {row.map((cell, j) => (
-                                    <td key={j} style={{ padding: '12px', borderBottom: '1px solid #1e293b', color: '#e2e8f0' }}>{cell}</td>
-                                ))}
+                                {row.map((cell, j) => {
+                                    const cellValue = typeof cell === 'string' ? cell.trim() : cell;
+                                    const url = isUrl(cellValue) ? cellValue : null;
+
+                                    return (
+                                        <td
+                                            key={j}
+                                            style={{
+                                                padding: '12px',
+                                                borderBottom: '1px solid #1e293b',
+                                                color: '#e2e8f0',
+                                                maxWidth: '320px'
+                                            }}
+                                        >
+                                            {url ? (
+                                                <a
+                                                    href={url}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    style={{
+                                                        display: 'inline-flex',
+                                                        alignItems: 'center',
+                                                        justifyContent: 'center',
+                                                        padding: '6px 12px',
+                                                        background: 'rgba(59, 130, 246, 0.15)',
+                                                        borderRadius: '999px',
+                                                        border: '1px solid #3b82f6',
+                                                        color: '#e2e8f0',
+                                                        fontSize: '0.8rem',
+                                                        textDecoration: 'none',
+                                                        whiteSpace: 'nowrap',
+                                                    }}
+                                                >
+                                                    Ouvrir la source
+                                                </a>
+                                            ) : (
+                                                cellValue
+                                            )}
+                                        </td>
+                                    );
+                                })}
                             </tr>
                         ))}
                     </tbody>
@@ -537,24 +578,123 @@ const ReportRenderer = ({ content }) => {
     );
 };
 
+// Helper to extract links from text
+const extractLinksFromText = (text) => {
+    if (!text || typeof text !== 'string') return [];
+    const urlRegex = /https?:\/\/[^\s)]+/g;
+    const matches = text.match(urlRegex) || [];
+    return matches.map((url) => ({ url, label: url }));
+};
+
+// Helper to extract links from any response object
+const extractLinksFromData = (data) => {
+    const links = [];
+    const seen = new Set();
+
+    const addLink = (url, label) => {
+        if (!url || seen.has(url)) return;
+        seen.add(url);
+        links.push({ url, label: label || url });
+    };
+
+    if (!data) return links;
+
+    if (typeof data === 'string') {
+        extractLinksFromText(data).forEach((l) => addLink(l.url, l.label));
+        return links;
+    }
+
+    // Direct url / urls fields
+    if (typeof data.url === 'string') addLink(data.url);
+    if (Array.isArray(data.urls)) {
+        data.urls.forEach((u) => {
+            if (typeof u === 'string') addLink(u);
+            else if (u && typeof u.url === 'string') addLink(u.url, u.label);
+        });
+    }
+
+    // links array: [{ url, label }] ou [string]
+    if (Array.isArray(data.links)) {
+        data.links.forEach((l) => {
+            if (typeof l === 'string') addLink(l);
+            else if (l && typeof l.url === 'string') addLink(l.url, l.label);
+        });
+    }
+
+    // Extraire depuis content si string
+    if (typeof data.content === 'string') {
+        extractLinksFromText(data.content).forEach((l) => addLink(l.url, l.label));
+    }
+
+    return links;
+};
+
+// Small component to render link buttons
+const LinkButtons = ({ links }) => {
+    if (!links || links.length === 0) return null;
+    return (
+        <div style={{
+            marginTop: '12px',
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: '8px'
+        }}>
+            {links.map((link, index) => (
+                <a
+                    key={`${link.url}-${index}`}
+                    href={link.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                        padding: '6px 12px',
+                        background: 'rgba(59, 130, 246, 0.15)',
+                        borderRadius: '999px',
+                        border: '1px solid #3b82f6',
+                        color: '#e2e8f0',
+                        fontSize: '0.8rem',
+                        textDecoration: 'none',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px'
+                    }}
+                >
+                    <span style={{
+                        width: '6px',
+                        height: '6px',
+                        borderRadius: '50%',
+                        background: '#3b82f6'
+                    }} />
+                    <span>Ouvrir le lien</span>
+                </a>
+            ))}
+        </div>
+    );
+};
+
 // Response Renderer Component - Automatically detects and transforms JSON responses
 const ResponseRenderer = ({ data }) => {
     if (!data) return null;
 
     // Handle string responses
     if (typeof data === 'string') {
+        const links = extractLinksFromText(data);
         return (
-            <div style={{
-                whiteSpace: 'pre-wrap',
-                background: data.length > 100 ? 'rgba(30, 41, 59, 0.3)' : 'transparent',
-                padding: data.length > 100 ? '20px' : '0',
-                borderRadius: '8px',
-                border: data.length > 100 ? '1px solid #334155' : 'none'
-            }}>
-                {data}
+            <div>
+                <div style={{
+                    whiteSpace: 'pre-wrap',
+                    background: data.length > 100 ? 'rgba(30, 41, 59, 0.3)' : 'transparent',
+                    padding: data.length > 100 ? '20px' : '0',
+                    borderRadius: '8px',
+                    border: data.length > 100 ? '1px solid #334155' : 'none'
+                }}>
+                    {data}
+                </div>
+                <LinkButtons links={links} />
             </div>
         );
     }
+
+    const globalLinks = extractLinksFromData(data);
 
     // Detect format based on "type" field (standardized format)
     const responseType = data.type?.toLowerCase();
@@ -577,7 +717,12 @@ const ResponseRenderer = ({ data }) => {
         }
 
         if (chartData) {
-            return <ChartRenderer chartData={chartData} />;
+            return (
+                <div>
+                    <ChartRenderer chartData={chartData} />
+                    <LinkButtons links={globalLinks} />
+                </div>
+            );
         }
     }
 
@@ -590,7 +735,8 @@ const ResponseRenderer = ({ data }) => {
             markers = data.markers.map(m => ({
                 name: m.name || m.title || "Marker",
                 coordinates: m.coordinates,
-                value: m.value !== undefined ? m.value : 50 // Preserve string values
+                value: m.value !== undefined ? m.value : 50, // Preserve string values
+                description: m.description || m.details || null,
             }));
         }
         // Alternative format: { mapData: { markers: [...] } }
@@ -598,7 +744,8 @@ const ResponseRenderer = ({ data }) => {
             markers = data.mapData.markers.map(m => ({
                 name: m.name || m.title || "Marker",
                 coordinates: m.coordinates,
-                value: m.value !== undefined ? m.value : 50 // Preserve string values
+                value: m.value !== undefined ? m.value : 50, // Preserve string values
+                description: m.description || m.details || null,
             }));
         }
 
@@ -612,6 +759,7 @@ const ResponseRenderer = ({ data }) => {
                     <div style={{ height: '350px', width: '100%', background: '#020617', borderRadius: '8px', overflow: 'hidden', position: 'relative' }}>
                         <WorldMap markers={markers} />
                     </div>
+                    <LinkButtons links={globalLinks} />
                 </EnhancedWrapper>
             );
         }
@@ -634,7 +782,12 @@ const ResponseRenderer = ({ data }) => {
         }
 
         if (headers.length > 0 || rows.length > 0) {
-            return <SimpleTable headers={headers} rows={rows} />;
+            return (
+                <div>
+                    <SimpleTable headers={headers} rows={rows} />
+                    <LinkButtons links={globalLinks} />
+                </div>
+            );
         }
     }
 
@@ -642,15 +795,19 @@ const ResponseRenderer = ({ data }) => {
     if (responseType === 'text' || (!responseType && data.content && !data.type)) {
         const content = data.content || '';
         if (content) {
+            const links = extractLinksFromText(content);
             return (
-                <div style={{
-                    whiteSpace: 'pre-wrap',
-                    background: content.length > 100 ? 'rgba(30, 41, 59, 0.3)' : 'transparent',
-                    padding: content.length > 100 ? '20px' : '0',
-                    borderRadius: '8px',
-                    border: content.length > 100 ? '1px solid #334155' : 'none'
-                }}>
-                    {content}
+                <div>
+                    <div style={{
+                        whiteSpace: 'pre-wrap',
+                        background: content.length > 100 ? 'rgba(30, 41, 59, 0.3)' : 'transparent',
+                        padding: content.length > 100 ? '20px' : '0',
+                        borderRadius: '8px',
+                        border: content.length > 100 ? '1px solid #334155' : 'none'
+                    }}>
+                        {content}
+                    </div>
+                    <LinkButtons links={links.length > 0 ? links : globalLinks} />
                 </div>
             );
         }
@@ -666,9 +823,12 @@ const ResponseRenderer = ({ data }) => {
 
     // Fallback: Display raw JSON for debugging
     return (
-        <div style={{ whiteSpace: 'pre-wrap', color: '#94a3b8', fontSize: '0.8rem', background: 'rgba(30, 41, 59, 0.3)', padding: '12px', borderRadius: '8px', border: '1px solid #334155' }}>
-            <div style={{ color: '#f59e0b', marginBottom: '8px', fontSize: '0.75rem' }}>⚠️ Unknown response format. Raw data:</div>
-            {JSON.stringify(data, null, 2)}
+        <div>
+            <div style={{ whiteSpace: 'pre-wrap', color: '#94a3b8', fontSize: '0.8rem', background: 'rgba(30, 41, 59, 0.3)', padding: '12px', borderRadius: '8px', border: '1px solid #334155' }}>
+                <div style={{ color: '#f59e0b', marginBottom: '8px', fontSize: '0.75rem' }}>⚠️ Unknown response format. Raw data:</div>
+                {JSON.stringify(data, null, 2)}
+            </div>
+            <LinkButtons links={globalLinks} />
         </div>
     );
 };
@@ -682,6 +842,7 @@ function NonTechnical() {
     const [selectedFormat, setSelectedFormat] = useState('text'); // Default to 'text' instead of null
     const [conversationId, setConversationId] = useState('');
     const [isLoading, setIsLoading] = useState(false);
+    const [isSidebarOpen, setIsSidebarOpen] = useState(true);
     const messagesEndRef = useRef(null);
 
     useEffect(() => {
@@ -852,7 +1013,8 @@ function NonTechnical() {
                 display: 'flex',
                 flexDirection: 'row',
                 flex: 1,
-                overflow: 'hidden'
+                overflow: 'hidden',
+                position: 'relative'
             }}>
                 {/* Left Section - Chat Interface */}
                 <div style={{
@@ -1059,42 +1221,77 @@ function NonTechnical() {
                 </div>
             </div>
 
-            {/* Right Section - Compact News Feed */}
+            {/* Right Section - Compact News Feed (collapsible) */}
             <div style={{
-                width: '300px', // Fixed small width
-                background: '#020617',
-                overflowY: 'auto',
-                padding: '20px',
-                borderLeft: '1px solid #334155',
-                flexShrink: 0
+                position: 'relative',
+                height: '100%',
+                transition: 'width 0.25s ease',
+                width: isSidebarOpen ? '300px' : '0px',
+                flexShrink: 0,
+                overflow: 'hidden',
+                borderLeft: isSidebarOpen ? '1px solid #334155' : 'none',
+                background: '#020617'
             }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '24px' }}>
-                    <Newspaper size={20} color="#3b82f6" />
-                    <h2 style={{ fontSize: '1.1rem', fontWeight: 'bold', margin: 0 }}>Latest</h2>
-                </div>
+                {/* Toggle handle */}
+                <button
+                    onClick={() => setIsSidebarOpen(prev => !prev)}
+                    style={{
+                        position: 'absolute',
+                        left: isSidebarOpen ? '-12px' : '-12px',
+                        top: '50%',
+                        transform: 'translateY(-50%)',
+                        width: '24px',
+                        height: '48px',
+                        borderRadius: '999px',
+                        border: '1px solid #334155',
+                        background: 'rgba(15, 23, 42, 0.95)',
+                        color: '#e2e8f0',
+                        fontSize: '0.7rem',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        zIndex: 30
+                    }}
+                >
+                    {isSidebarOpen ? '⟨' : '⟩'}
+                </button>
 
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                    {[
-                        { title: "Market Analysis Q3", time: "1h ago", tag: "Finance" },
-                        { title: "New AI Regulations", time: "2h ago", tag: "Policy" },
-                        { title: "Tech Sector Rally", time: "4h ago", tag: "Market" },
-                        { title: "Global Supply Chain", time: "5h ago", tag: "Logistics" },
-                        { title: "Energy Crisis Update", time: "6h ago", tag: "Energy" }
-                    ].map((item, i) => (
-                        <div key={i} style={{
-                            padding: '12px',
-                            background: '#1e293b',
-                            borderRadius: '8px',
-                            border: '1px solid #334155'
-                        }}>
-                            <h3 style={{ fontSize: '0.9rem', fontWeight: '600', marginBottom: '8px', lineHeight: '1.4' }}>{item.title}</h3>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: '#94a3b8' }}>
-                                <span>{item.time}</span>
-                                <span style={{ color: '#3b82f6' }}>{item.tag}</span>
-                            </div>
+                {isSidebarOpen && (
+                    <div style={{
+                        height: '100%',
+                        overflowY: 'auto',
+                        padding: '20px'
+                    }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '24px' }}>
+                            <Newspaper size={20} color="#3b82f6" />
+                            <h2 style={{ fontSize: '1.1rem', fontWeight: 'bold', margin: 0 }}>Latest</h2>
                         </div>
-                    ))}
-                </div>
+
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                            {[
+                                { title: "Market Analysis Q3", time: "1h ago", tag: "Finance" },
+                                { title: "New AI Regulations", time: "2h ago", tag: "Policy" },
+                                { title: "Tech Sector Rally", time: "4h ago", tag: "Market" },
+                                { title: "Global Supply Chain", time: "5h ago", tag: "Logistics" },
+                                { title: "Energy Crisis Update", time: "6h ago", tag: "Energy" }
+                            ].map((item, i) => (
+                                <div key={i} style={{
+                                    padding: '12px',
+                                    background: '#1e293b',
+                                    borderRadius: '8px',
+                                    border: '1px solid #334155'
+                                }}>
+                                    <h3 style={{ fontSize: '0.9rem', fontWeight: '600', marginBottom: '8px', lineHeight: '1.4' }}>{item.title}</h3>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: '#94a3b8' }}>
+                                        <span>{item.time}</span>
+                                        <span style={{ color: '#3b82f6' }}>{item.tag}</span>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
             </div>
             </div>
         </div>

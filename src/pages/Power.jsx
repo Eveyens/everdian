@@ -1,26 +1,11 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import WorldMap from '../components/WorldMap';
 import { Layout, Bell, User, Bot, Clock, FileText, Filter, Download, Database, BarChart2, Search, X, Globe, MessageSquare, Tag, Calendar, RefreshCw, Trash2, Eye, EyeOff } from 'lucide-react';
 
-// Import JSONL data
-import rawData from '../../2025-10-25.jsonl?raw';
-
-// Parse JSONL data
-const parseJsonl = (data) => {
-    return data
-        .split('\n')
-        .filter(line => line.trim())
-        .slice(0, 500) // Limit to 500 items for performance
-        .map(line => {
-            try {
-                return JSON.parse(line);
-            } catch (e) {
-                return null;
-            }
-        })
-        .filter(item => item !== null);
-};
+// Supabase configuration (public anon key – safe for frontend)
+const SUPABASE_URL = 'https://jgfrctmtakpamojfymer.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpnZnJjdG10YWtwYW1vamZ5bWVyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQwMTI4NzMsImV4cCI6MjA3OTU4ODg3M30.nGiV5X4joVojCqFLKFSAPAar_x_GY8APXFSXjVbENSI';
 
 // NewsItem component for the feed
 const NewsItem = ({ item, onSelect, isSelected, onHide }) => {
@@ -390,11 +375,50 @@ function Power() {
         language: 'all'
     });
 
+    // Load data from Supabase
+    const loadDataFromSupabase = useCallback(async () => {
+        try {
+            const response = await fetch(`${SUPABASE_URL}/rest/v1/contents_clean?select=id,content,metadata&limit=500`, {
+                headers: {
+                    apikey: SUPABASE_ANON_KEY,
+                    Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+                },
+            });
+
+            if (!response.ok) {
+                throw new Error(`Supabase error: ${response.status} ${response.statusText}`);
+            }
+
+            const rows = await response.json();
+
+            const mapped = rows.map((row) => {
+                const meta = row.metadata || {};
+                return {
+                    id: row.id,
+                    text: row.content,
+                    english_sentence: meta.english_sentence || row.content,
+                    lang: meta.lang,
+                    labels_v2: meta.labels_v2,
+                    publish_date: meta.publish_date,
+                    locations: meta.locations,
+                    images: meta.images || [],
+                    videos: meta.videos || [],
+                    url: meta.url,
+                    user: meta.user,
+                    network: meta.network,
+                };
+            });
+
+            setAllData(mapped);
+        } catch (error) {
+            console.error('Error loading data from Supabase:', error);
+        }
+    }, []);
+
     // Load data on mount
     useEffect(() => {
-        const data = parseJsonl(rawData);
-        setAllData(data);
-    }, []);
+        loadDataFromSupabase();
+    }, [loadDataFromSupabase]);
 
     // Filter data based on current filters
     const filteredData = useMemo(() => {
@@ -646,10 +670,7 @@ function Power() {
                         setFilters={setFilters}
                         stats={stats}
                         onExport={handleExport}
-                        onRefresh={() => {
-                            const data = parseJsonl(rawData);
-                            setAllData(data);
-                        }}
+                        onRefresh={loadDataFromSupabase}
                         onClearFilters={handleClearFilters}
                     />
                 </section>
