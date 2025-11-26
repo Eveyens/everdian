@@ -288,11 +288,11 @@ const ChartRenderer = ({ chartData }) => {
     const style = { height: '300px', width: '100%' };
 
     const chartComponent = (() => {
-        switch (type?.toLowerCase()) {
+    switch (type?.toLowerCase()) {
             case 'line': return <Line data={data} options={options} />;
             case 'pie': return <Pie data={data} options={options} />;
             case 'doughnut': return <Doughnut data={data} options={options} />;
-            case 'bar':
+        case 'bar':
             default: return <Bar data={data} options={options} />;
         }
     })();
@@ -353,6 +353,13 @@ const SimpleTable = ({ headers, rows }) => {
     const isUrl = (value) =>
         typeof value === 'string' && /^https?:\/\/[^\s]+$/i.test(value.trim());
 
+    // Extract all URLs from a cell, even if there are multiple separated by commas
+    const extractUrlsFromCell = (value) => {
+        if (typeof value !== 'string') return [];
+        const parts = value.split(',').map(p => p.trim()).filter(Boolean);
+        return parts.filter((p) => isUrl(p));
+    };
+
     return (
         <EnhancedWrapper
             downloadData={tableData}
@@ -360,20 +367,46 @@ const SimpleTable = ({ headers, rows }) => {
             downloadType="csv"
         >
             <div style={{ overflowX: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem' }}>
-                    <thead>
-                        <tr>
-                            {headers.map((col, i) => (
-                                <th key={i} style={{ textAlign: 'left', padding: '12px', borderBottom: '1px solid #334155', color: '#94a3b8' }}>{col}</th>
-                            ))}
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {rows.map((row, i) => (
-                            <tr key={i}>
+                <table
+                    style={{
+                        width: '100%',
+                        borderCollapse: 'collapse',
+                        fontSize: '0.9rem',
+                        tableLayout: 'fixed'
+                    }}
+                >
+                    <colgroup>
+                        <col style={{ width: '14%' }} /> {/* Pays */}
+                        <col style={{ width: '10%' }} /> {/* Nombre de rapports */}
+                        <col style={{ width: '28%' }} /> {/* Types de crimes */}
+                        <col style={{ width: '23%' }} /> {/* Exemple de lieu */}
+                        <col style={{ width: '25%' }} /> {/* Source (URL) */}
+                    </colgroup>
+                <thead>
+                    <tr>
+                        {headers.map((col, i) => (
+                                <th
+                                    key={i}
+                                    style={{
+                                        textAlign: 'center',
+                                        padding: '12px',
+                                        borderBottom: '1px solid #334155',
+                                        color: '#94a3b8',
+                                        whiteSpace: 'normal',
+                                        wordBreak: 'keep-all' // ne coupe pas un mot en plein milieu
+                                    }}
+                                >
+                                    {col}
+                                </th>
+                        ))}
+                    </tr>
+                </thead>
+                <tbody>
+                    {rows.map((row, i) => (
+                        <tr key={i}>
                                 {row.map((cell, j) => {
                                     const cellValue = typeof cell === 'string' ? cell.trim() : cell;
-                                    const url = isUrl(cellValue) ? cellValue : null;
+                                    const urls = extractUrlsFromCell(cellValue);
 
                                     return (
                                         <td
@@ -385,38 +418,43 @@ const SimpleTable = ({ headers, rows }) => {
                                                 maxWidth: '320px'
                                             }}
                                         >
-                                            {url ? (
-                                                <a
-                                                    href={url}
-                                                    target="_blank"
-                                                    rel="noopener noreferrer"
-                                                    style={{
-                                                        display: 'inline-flex',
-                                                        alignItems: 'center',
-                                                        justifyContent: 'center',
-                                                        padding: '6px 12px',
-                                                        background: 'rgba(59, 130, 246, 0.15)',
-                                                        borderRadius: '999px',
-                                                        border: '1px solid #3b82f6',
-                                                        color: '#e2e8f0',
-                                                        fontSize: '0.8rem',
-                                                        textDecoration: 'none',
-                                                        whiteSpace: 'nowrap',
-                                                    }}
-                                                >
-                                                    Ouvrir la source
-                                                </a>
+                                            {urls.length > 0 ? (
+                                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                                                    {urls.map((url, idx) => (
+                                                        <a
+                                                            key={`${url}-${idx}`}
+                                                            href={url}
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            style={{
+                                                                display: 'inline-flex',
+                                                                alignItems: 'center',
+                                                                justifyContent: 'center',
+                                                                padding: '6px 12px',
+                                                                background: 'rgba(59, 130, 246, 0.15)',
+                                                                borderRadius: '999px',
+                                                                border: '1px solid #3b82f6',
+                                                                color: '#e2e8f0',
+                                                                fontSize: '0.8rem',
+                                                                textDecoration: 'none',
+                                                                whiteSpace: 'nowrap',
+                                                            }}
+                                                        >
+                                                            {urls.length === 1 ? 'Ouvrir la source' : `Source ${idx + 1}`}
+                                                        </a>
+                                                    ))}
+                                                </div>
                                             ) : (
                                                 cellValue
                                             )}
                                         </td>
                                     );
                                 })}
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
-            </div>
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
+        </div>
         </EnhancedWrapper>
     );
 };
@@ -734,7 +772,7 @@ const ResponseRenderer = ({ data }) => {
         if (responseType === 'map' && data.markers) {
             markers = data.markers.map(m => ({
                 name: m.name || m.title || "Marker",
-                coordinates: m.coordinates,
+            coordinates: m.coordinates,
                 value: m.value !== undefined ? m.value : 50, // Preserve string values
                 description: m.description || m.details || null,
             }));
@@ -750,15 +788,15 @@ const ResponseRenderer = ({ data }) => {
         }
 
         if (markers.length > 0) {
-            return (
+        return (
                 <EnhancedWrapper
                     downloadData={{ type: 'map', markers }}
                     downloadFilename={`map-${new Date().toISOString().split('T')[0]}.json`}
                     downloadType="json"
                 >
                     <div style={{ height: '350px', width: '100%', background: '#020617', borderRadius: '8px', overflow: 'hidden', position: 'relative' }}>
-                        <WorldMap markers={markers} />
-                    </div>
+                <WorldMap markers={markers} />
+            </div>
                     <LinkButtons links={globalLinks} />
                 </EnhancedWrapper>
             );
@@ -782,7 +820,7 @@ const ResponseRenderer = ({ data }) => {
         }
 
         if (headers.length > 0 || rows.length > 0) {
-            return (
+        return (
                 <div>
                     <SimpleTable headers={headers} rows={rows} />
                     <LinkButtons links={globalLinks} />
@@ -798,18 +836,18 @@ const ResponseRenderer = ({ data }) => {
             const links = extractLinksFromText(content);
             return (
                 <div>
-                    <div style={{
-                        whiteSpace: 'pre-wrap',
+            <div style={{
+                whiteSpace: 'pre-wrap',
                         background: content.length > 100 ? 'rgba(30, 41, 59, 0.3)' : 'transparent',
                         padding: content.length > 100 ? '20px' : '0',
-                        borderRadius: '8px',
+                borderRadius: '8px',
                         border: content.length > 100 ? '1px solid #334155' : 'none'
-                    }}>
+            }}>
                         {content}
                     </div>
                     <LinkButtons links={links.length > 0 ? links : globalLinks} />
-                </div>
-            );
+            </div>
+        );
         }
     }
 
@@ -826,7 +864,7 @@ const ResponseRenderer = ({ data }) => {
         <div>
             <div style={{ whiteSpace: 'pre-wrap', color: '#94a3b8', fontSize: '0.8rem', background: 'rgba(30, 41, 59, 0.3)', padding: '12px', borderRadius: '8px', border: '1px solid #334155' }}>
                 <div style={{ color: '#f59e0b', marginBottom: '8px', fontSize: '0.75rem' }}>⚠️ Unknown response format. Raw data:</div>
-                {JSON.stringify(data, null, 2)}
+            {JSON.stringify(data, null, 2)}
             </div>
             <LinkButtons links={globalLinks} />
         </div>
@@ -842,7 +880,6 @@ function NonTechnical() {
     const [selectedFormat, setSelectedFormat] = useState('text'); // Default to 'text' instead of null
     const [conversationId, setConversationId] = useState('');
     const [isLoading, setIsLoading] = useState(false);
-    const [isSidebarOpen, setIsSidebarOpen] = useState(true);
     const messagesEndRef = useRef(null);
 
     useEffect(() => {
@@ -898,7 +935,7 @@ function NonTechnical() {
             }
 
             const data = await response.json();
-            
+
             console.log('📥 Received response from webhook:', {
                 format: currentFormat,
                 responseType: data.type,
@@ -962,7 +999,7 @@ function NonTechnical() {
                 flexShrink: 0
             }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                    <div style={{
+            <div style={{
                         width: '32px',
                         height: '32px',
                         background: 'rgba(59, 130, 246, 0.1)',
@@ -1008,58 +1045,24 @@ function NonTechnical() {
                 </button>
             </header>
 
-            {/* Main Content */}
+            {/* Main Content - Chat full width */}
             <div style={{
-                display: 'flex',
-                flexDirection: 'row',
                 flex: 1,
+                display: 'flex',
+                flexDirection: 'column',
                 overflow: 'hidden',
-                position: 'relative'
+                background: 'rgba(15, 23, 42, 0.95)',
+                borderTop: '1px solid #334155'
             }}>
-                {/* Left Section - Chat Interface */}
-                <div style={{
-                    flex: 1, // Takes remaining space
-                    display: 'flex',
-                    flexDirection: 'column',
-                    borderRight: '1px solid #334155',
-                    background: 'rgba(15, 23, 42, 0.95)',
-                    zIndex: 20,
-                    overflow: 'hidden'
-                }}>
-                    {/* Chat Header */}
-                    <div style={{
-                        padding: '16px 24px',
-                        borderBottom: '1px solid #334155',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '12px',
-                        flexShrink: 0
-                    }}>
-                        <div style={{
-                            width: '40px',
-                            height: '40px',
-                            background: 'rgba(59, 130, 246, 0.1)',
-                            borderRadius: '8px',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center'
-                        }}>
-                            <Bot size={24} color="#3b82f6" />
-                        </div>
-                        <div>
-                            <h2 style={{ fontSize: '1rem', fontWeight: 'bold', margin: 0 }}>AI Assistant</h2>
-                            <span style={{ fontSize: '0.75rem', color: '#10b981' }}>● Online</span>
-                        </div>
-                    </div>
-
                 {/* Messages Area */}
                 <div style={{
                     flex: 1,
                     overflowY: 'auto',
-                    padding: '20px',
+                    padding: '20px 40px',
                     display: 'flex',
                     flexDirection: 'column',
-                    gap: '20px'
+                    gap: '20px',
+                    alignItems: 'center'
                 }}>
                     {messages.map((msg) => (
                         <div key={msg.id} style={{
@@ -1067,8 +1070,8 @@ function NonTechnical() {
                             gap: '12px',
                             flexDirection: msg.type === 'user' ? 'row-reverse' : 'row',
                             alignSelf: msg.type === 'user' ? 'flex-end' : 'flex-start',
-                            maxWidth: '90%',
-                            width: '100%'
+                            width: '100%',
+                            maxWidth: '900px'
                         }}>
                             <div style={{
                                 width: '32px',
@@ -1092,8 +1095,8 @@ function NonTechnical() {
                                 lineHeight: '1.5',
                                 color: '#e2e8f0',
                                 wordBreak: 'break-word',
-                                width: msg.type === 'bot' ? '100%' : 'auto',
-                                maxWidth: msg.type === 'bot' ? '600px' : '100%'
+                                width: '100%',
+                                maxWidth: '100%'
                             }}>
                                 {msg.text && (
                                     <div>
@@ -1139,28 +1142,28 @@ function NonTechnical() {
                     flexShrink: 0
                 }}>
                     {/* Format Selection Buttons */}
-                    <div style={{
-                        display: 'flex',
-                        flexWrap: 'wrap',
+                        <div style={{
+                            display: 'flex',
+                            flexWrap: 'wrap',
                         gap: '8px',
                         marginBottom: '12px'
-                    }}>
-                        {options.map((opt, index) => (
-                            <button
-                                key={index}
+                        }}>
+                            {options.map((opt, index) => (
+                                <button
+                                    key={index}
                                 type="button"
                                 onClick={() => setSelectedFormat(opt)}
-                                style={{
+                                    style={{
                                     padding: '6px 12px',
-                                    background: selectedFormat === opt ? 'rgba(59, 130, 246, 0.2)' : 'rgba(30, 41, 59, 0.3)',
-                                    border: selectedFormat === opt ? '1px solid #3b82f6' : '1px solid #334155',
+                                        background: selectedFormat === opt ? 'rgba(59, 130, 246, 0.2)' : 'rgba(30, 41, 59, 0.3)',
+                                        border: selectedFormat === opt ? '1px solid #3b82f6' : '1px solid #334155',
                                     borderRadius: '16px',
-                                    color: selectedFormat === opt ? '#f8fafc' : '#94a3b8',
-                                    cursor: 'pointer',
-                                    transition: 'all 0.2s',
+                                        color: selectedFormat === opt ? '#f8fafc' : '#94a3b8',
+                                        cursor: 'pointer',
+                                        transition: 'all 0.2s',
                                     fontSize: '0.8rem',
-                                    display: 'flex',
-                                    alignItems: 'center',
+                                        display: 'flex',
+                                        alignItems: 'center',
                                     gap: '4px',
                                     textTransform: 'capitalize',
                                     fontWeight: selectedFormat === opt ? '600' : '400'
@@ -1171,10 +1174,10 @@ function NonTechnical() {
                                 {opt === 'map' && <MapIcon size={14} />}
                                 {opt === 'graphic' && <BarChart2 size={14} />}
                                 {opt === 'rapport' && <ImageIcon size={14} />}
-                                {opt}
-                            </button>
-                        ))}
-                    </div>
+                                    {opt}
+                                </button>
+                            ))}
+                        </div>
                     <form onSubmit={handleSend} style={{ position: 'relative', width: '100%' }}>
                         <input
                             type="text"
@@ -1219,80 +1222,6 @@ function NonTechnical() {
                         </button>
                     </form>
                 </div>
-            </div>
-
-            {/* Right Section - Compact News Feed (collapsible) */}
-            <div style={{
-                position: 'relative',
-                height: '100%',
-                transition: 'width 0.25s ease',
-                width: isSidebarOpen ? '300px' : '0px',
-                flexShrink: 0,
-                overflow: 'hidden',
-                borderLeft: isSidebarOpen ? '1px solid #334155' : 'none',
-                background: '#020617'
-            }}>
-                {/* Toggle handle */}
-                <button
-                    onClick={() => setIsSidebarOpen(prev => !prev)}
-                    style={{
-                        position: 'absolute',
-                        left: isSidebarOpen ? '-12px' : '-12px',
-                        top: '50%',
-                        transform: 'translateY(-50%)',
-                        width: '24px',
-                        height: '48px',
-                        borderRadius: '999px',
-                        border: '1px solid #334155',
-                        background: 'rgba(15, 23, 42, 0.95)',
-                        color: '#e2e8f0',
-                        fontSize: '0.7rem',
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        zIndex: 30
-                    }}
-                >
-                    {isSidebarOpen ? '⟨' : '⟩'}
-                </button>
-
-                {isSidebarOpen && (
-                    <div style={{
-                        height: '100%',
-                        overflowY: 'auto',
-                        padding: '20px'
-                    }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '24px' }}>
-                            <Newspaper size={20} color="#3b82f6" />
-                            <h2 style={{ fontSize: '1.1rem', fontWeight: 'bold', margin: 0 }}>Latest</h2>
-                        </div>
-
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                            {[
-                                { title: "Market Analysis Q3", time: "1h ago", tag: "Finance" },
-                                { title: "New AI Regulations", time: "2h ago", tag: "Policy" },
-                                { title: "Tech Sector Rally", time: "4h ago", tag: "Market" },
-                                { title: "Global Supply Chain", time: "5h ago", tag: "Logistics" },
-                                { title: "Energy Crisis Update", time: "6h ago", tag: "Energy" }
-                            ].map((item, i) => (
-                                <div key={i} style={{
-                                    padding: '12px',
-                                    background: '#1e293b',
-                                    borderRadius: '8px',
-                                    border: '1px solid #334155'
-                                }}>
-                                    <h3 style={{ fontSize: '0.9rem', fontWeight: '600', marginBottom: '8px', lineHeight: '1.4' }}>{item.title}</h3>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: '#94a3b8' }}>
-                                        <span>{item.time}</span>
-                                        <span style={{ color: '#3b82f6' }}>{item.tag}</span>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                )}
-            </div>
             </div>
         </div>
     );
